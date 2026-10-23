@@ -30,6 +30,43 @@ export function berlinDayRange(daysAhead = 0) {
   };
 }
 
+/**
+ * Lokale Berliner Uhrzeit → ISO-Zeitpunkt.
+ * "2026-10-24" + "18:00" → "2026-10-24T16:00:00.000Z" (Sommer-/Winterzeit des Zieldatums wird beachtet).
+ */
+export function berlinToISO(day: string, time = "00:00"): string {
+  // Offset am Mittag des Zieltags bestimmen – robust gegen die Umstellungsnacht
+  const probe = new Date(`${day}T12:00:00Z`);
+  const off = berlinOffset(probe);
+  return new Date(`${day}T${time.length === 5 ? time + ":00" : time}${off}`).toISOString();
+}
+
+/** Wert aus <input type="datetime-local"> ("2026-10-24T18:00") als Berliner Zeit → ISO. */
+export function berlinLocalToISO(local: string): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(local);
+  return m ? berlinToISO(m[1], m[2]) : null;
+}
+
+/** "Montag, 26. Oktober" für Gruppenüberschriften */
+export function formatDayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = berlinDateString();
+  const tomorrow = berlinDateString(new Date(Date.now() + 86_400_000));
+  const key = berlinDateString(d);
+  if (key === today) return "Heute";
+  if (key === tomorrow) return "Morgen";
+  return new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" }).format(d);
+}
+
+/** "in 3 Tagen", "in 2 Wochen", "in 4 Monaten" */
+export function formatRelative(iso: string, now = Date.now()): string {
+  const days = Math.round((new Date(iso).getTime() - now) / 86_400_000);
+  const rtf = new Intl.RelativeTimeFormat("de-DE", { numeric: "auto" });
+  if (Math.abs(days) < 14) return rtf.format(days, "day");
+  if (Math.abs(days) < 60) return rtf.format(Math.round(days / 7), "week");
+  return rtf.format(Math.round(days / 30), "month");
+}
+
 export function berlinHour(date = new Date()): number {
   return Number(
     new Intl.DateTimeFormat("de-DE", { timeZone: TZ, hour: "numeric", hourCycle: "h23" }).format(date),

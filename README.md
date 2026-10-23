@@ -59,6 +59,33 @@ life-os/
 - **iPhone (Safari):** Teilen → „Zum Home-Bildschirm“. Push-Benachrichtigungen funktionieren auf iOS nur für so installierte Web-Apps.
 - **Android (Chrome):** Menü → „App installieren“.
 
+## Features
+
+### Daily Timeline (Homescreen)
+Vertikale Zeitachse für heute mit „Jetzt“-Marker, laufenden Terminen und freien Lücken (ab 90 Min).
+Der Schalter **Berufsschule** blendet den Stundenplan aus dem **School Hub** ein (Doppelstunden werden
+zusammengefasst, Entfall/Änderungen hervorgehoben, Prüfungen erscheinen oben).
+
+School Hub läuft auf Google Apps Script. Life OS ruft serverseitig dessen `/exec`-Schnittstelle
+(`fn: "getDashboard"`) auf und speichert nur Stunden + Prüfungen 30 Minuten in `external_cache`.
+Benötigte Vercel-Variablen: `SCHOOL_HUB_API_URL`, `SCHOOL_HUB_KEY`.
+
+### Future Log + Auto-Scheduling (`/future`)
+Aufgaben, Ideen und Projekte ohne Datum, optional mit grobem Horizont („in 3 Monaten“).
+Gemini schlägt passende Kalender-Slots vor – mit Blick auf belegte Termine. Der Scan läuft
+automatisch beim Öffnen der App (höchstens alle 12 h) oder per „Neu planen“. Vorschläge lassen sich
+einzeln oder gesammelt übernehmen; verworfene Items werden 14 Tage nicht erneut vorgeschlagen.
+
+### Routinen (`/routinen`)
+Anpinnbare Widgets: **Push/Pull/Legs**-Tracker, **Projekt**-Checkliste (DIY, Garten …),
+**Sport-Verabredungen** (optional direkt im Kalender). Neue Typen: `lib/widgets.ts` + Komponente
+in `components/widgets/` + Wert im CHECK-Constraint von `widgets.type`.
+
+### Architektur
+- `lib/data/*` – Lesezugriffe (Server), `app/actions/*` – Schreibzugriffe als Server Actions
+- `lib/gemini.ts` – gemeinsamer Gemini-Kern (Smart Input + Auto-Scheduling), Output wird immer validiert
+- `supabase/migrations/` – nummerierte, idempotente Migrationen, RLS auf allen Tabellen
+
 ## Roadmap
 
 - **Schritt 2:** Kalenderansicht (Monat/Woche, Bearbeiten, Löschen) · Notizen mit Bild-Upload
