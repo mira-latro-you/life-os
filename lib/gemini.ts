@@ -1,166 +1,220 @@
 import "server-only";
 import { berlinOffset, formatLongDate, TZ } from "./dates";
-import type { EventKind } from "./types";
 
-/* ─────────────────────────────────────────────
-   Gemeinsamer Kern: Prompt rein, validiertes JSON raus
-   ───────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   Gemini-Kern: ein Aufruf → validiertes JSON. Alle KI-Features bauen darauf auf.
+   Modell-Output wird nie blind übernommen – jede Funktion validiert selbst.
+   ═══════════════════════════════════════════════════════════════════ */
 
-async function geminiJSON<T>(system: string, user: string, responseSchema: object): Promise<T> {
+type Part = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+export async function geminiJSON<T>(
+  system: string,
+  user: string | Part[],
+  responseSchema: object,
+  opts: { temperature?: number; timeoutMs?: number } = {},
+): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY fehlt");
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const parts: Part[] = typeof user === "string" ? [{ text: user }] : user;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: "user", parts: [{ text: user }] }],
-        generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema },
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(25_000),
-    },
-  );
-
-  if (!res.ok) {
-    throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  }
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: { temperature: opts.temperature ?? 0.1, responseMimeType: "application/json", responseSchema },
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
+  });
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
   const raw: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!raw) throw new Error("Leere Antwort von Gemini");
   return JSON.parse(raw) as T;
 }
 
-function nowContext(now: Date) {
-  const nowLocal = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }).format(now);
-  return `Jetzt ist ${formatLongDate(now)}, ${nowLocal} (Zeitzone ${TZ}, aktuell UTC${berlinOffset(now)}).`;
+export function nowContext(now = new Date()) {
+  const local = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, dateStyle: "short", timeStyle: "short" }).format(now);
+  return `Jetzt ist ${formatLongDate(now)}, ${local} (Zeitzone ${TZ}, aktuell UTC${berlinOffset(now)}).`;
 }
 
-const isoOrNull = (v: unknown) =>
-  typeof v === "string" && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null;
+export const isoOrNull = (v: unknown) =>
+  typeof v === "string" && v && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null;
 
-/* ─────────────────────────────────────────────
-   1) Smart Input: Freitext → ein Kalendereintrag
-   ───────────────────────────────────────────── */
+const S = (nullable = false) => ({ type: "STRING", ...(nullable ? { nullable: true } : {}) });
+const B = { type: "BOOLEAN" };
 
-export interface ParsedEntry {
-  kind: EventKind;
+/* ═══════════════════════════════════════════════════════════════════
+   1) Brain Dump: unstrukturierter Text/Sprache → Liste gerouteter Einträge
+   ═══════════════════════════════════════════════════════════════════ */
+
+export type RouteTarget = "event" | "task" | "shopping" | "note";
+
+export interface RoutedItem {
+  route: RouteTarget;
   title: string;
+  workspace: string; // Workspace-Key
+  task_type: "task" | "goal" | "question" | "idea" | "exam";
+  project: string | null;
   starts_at: string | null;
   ends_at: string | null;
   all_day: boolean;
+  due_at: string | null;
   location: string | null;
-  description: string | null;
+  quantity: string | null;
+  store: string | null;
+  content: string | null;
 }
 
-const entrySchema = {
+export interface BrainContext {
+  profile: { display_name?: string | null; school_class?: string | null; employer?: string | null; job_role?: string | null };
+  workspaces: { key: string; name: string; description: string | null }[];
+  projects: string[];
+}
+
+const routedSchema = {
   type: "OBJECT",
   properties: {
-    kind: { type: "STRING", enum: ["event", "todo"] },
-    title: { type: "STRING" },
-    starts_at: { type: "STRING", nullable: true },
-    ends_at: { type: "STRING", nullable: true },
-    all_day: { type: "BOOLEAN" },
-    location: { type: "STRING", nullable: true },
-    description: { type: "STRING", nullable: true },
+    transcript: S(true),
+    items: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          route: { type: "STRING", enum: ["event", "task", "shopping", "note"] },
+          title: S(),
+          workspace: S(),
+          task_type: { type: "STRING", enum: ["task", "goal", "question", "idea", "exam"] },
+          project: S(true),
+          starts_at: S(true),
+          ends_at: S(true),
+          all_day: B,
+          due_at: S(true),
+          location: S(true),
+          quantity: S(true),
+          store: S(true),
+          content: S(true),
+        },
+        required: ["route", "title", "workspace", "task_type", "project", "starts_at", "ends_at", "all_day", "due_at", "location", "quantity", "store", "content"],
+        propertyOrdering: ["route", "title", "workspace", "task_type", "project", "starts_at", "ends_at", "all_day", "due_at", "location", "quantity", "store", "content"],
+      },
+    },
   },
-  required: ["kind", "title", "starts_at", "ends_at", "all_day", "location", "description"],
-  propertyOrdering: ["kind", "title", "starts_at", "ends_at", "all_day", "location", "description"],
+  required: ["transcript", "items"],
+  propertyOrdering: ["transcript", "items"],
 };
 
-export async function parseSmartInput(text: string, now = new Date()): Promise<ParsedEntry> {
-  const system = `Du wandelst umgangssprachliche deutsche Eingaben in genau EINEN Kalendereintrag um.
+export async function routeBrainDump(
+  input: { text?: string; audio?: { mimeType: string; data: string } },
+  ctx: BrainContext,
+  now = new Date(),
+): Promise<{ transcript: string | null; items: RoutedItem[] }> {
+  const ws = ctx.workspaces.map((w) => `- "${w.key}": ${w.name}${w.description ? ` (${w.description})` : ""}`).join("\n");
+  const p = ctx.profile;
+
+  const system = `Du bist das Routing-Gehirn einer persönlichen Life-OS-App. Der Nutzer wirft ungefiltert Gedanken hinein.
 ${nowContext(now)}
+Nutzer: ${p.display_name ?? "Justus"}, Berufsschulklasse ${p.school_class ?? "–"}, arbeitet bei ${p.employer ?? "–"} (${p.job_role ?? "–"}).
 
-Regeln:
-- kind = "event", wenn eine Uhrzeit oder ein Termin-Charakter erkennbar ist (Treffen, Training, Arzt, Schule …).
-- kind = "todo", wenn es eine Aufgabe ist ("muss", "nicht vergessen", "erledigen", "kaufen") – auch mit Datum als Fälligkeit.
-- title: kurz, sauber, großgeschrieben, ohne Datum/Uhrzeit. Beispiel: "Training".
-- starts_at / ends_at: ISO 8601 MIT Offset, z. B. "2026-10-24T18:00:00${berlinOffset(now)}". Achte auf Sommer-/Winterzeit des Zieldatums.
-- Relative Angaben ("morgen", "übermorgen", "nächsten Dienstag", "in 2 Stunden") ab jetzt auflösen.
-- Kein Ende genannt → ends_at = starts_at + 1 Stunde (nur bei events mit Uhrzeit).
-- Nur Datum ohne Uhrzeit → all_day = true, starts_at = Tagesbeginn 00:00, ends_at = null.
-- To-do ohne Datum → starts_at = null.
-- location nur, wenn ein Ort genannt wird. description nur für relevante Zusatzinfos, sonst null.`;
+Bereiche (workspace-Keys):
+${ws}
+Bekannte Projekte: ${ctx.projects.length ? ctx.projects.join(", ") : "keine"}.
 
-  const p = await geminiJSON<Partial<ParsedEntry>>(system, text, entrySchema);
+Aufgabe: Zerlege die Eingabe in einzelne Einträge (ein Satz kann mehrere enthalten) und route jeden:
+- "event": fester Zeitpunkt/Termin (Uhrzeit oder klarer Tag + Termincharakter: Training, Padel, Arzt, Meeting, Treffen).
+- "task": etwas zu tun/zu klären ohne feste Uhrzeit. task_type:
+    "question" = jemanden etwas fragen/ansprechen (z. B. "Serhat nach mehr Verantwortung fragen"),
+    "goal" = Ziel/Vorsatz, "idea" = Idee (z. B. Coding-/Projektidee), "exam" = Klausur/Test/Prüfung lernen, sonst "task".
+    due_at = Fälligkeit, wenn ein Zeitraum genannt wird ("nächste Woche" → Montag der nächsten Woche 09:00, "bis Freitag" → Freitag 18:00).
+- "shopping": etwas kaufen/besorgen. title = nur der Artikel ("Holz"), store = passender Laden falls sinnvoll ("Baumarkt"), quantity falls genannt, project falls erkennbar ("Stückle").
+- "note": reine Info/Gedanke zum Merken ohne Handlung. content = vollständiger Text.
 
-  const title = String(p.title ?? "").trim().slice(0, 200);
-  if (!title) throw new Error("Kein Titel erkannt");
+Bereich wählen: Arbeit/Kollegen/Intersport/Shop/E-Commerce → "arbeit"; Schule/Lehrer/Klausur/LF/Fächer → "schule"; alles andere (Garten, Stückle, Auto, Sport, Freizeit, Coding privat) → "privat". Nur Keys aus der Liste verwenden.
+project: kurzer Projektname, wenn erkennbar (z. B. "Stückle", "Auto", "Coding"); bevorzugt bekannte Projekte.
+title: kurz, klar, ohne Datums-/Zeitangaben, großgeschrieben.
+Zeiten: ISO 8601 MIT Berliner Offset des Zieldatums. Termin ohne Ende → ends_at = starts_at + 1 Stunde (Sport 90 Minuten). Nur Datum → all_day = true, starts_at = 00:00.
+Nicht genutzte Felder = null, all_day = false.
+${input.audio ? 'Die Eingabe ist eine Sprachaufnahme: schreibe die wörtliche Transkription in "transcript".' : 'transcript = null.'}`;
 
-  let starts_at = isoOrNull(p.starts_at);
-  let ends_at = isoOrNull(p.ends_at);
-  let kind: EventKind = p.kind === "todo" ? "todo" : "event";
-  const all_day = Boolean(p.all_day);
+  const parts: Part[] = input.audio
+    ? [{ inlineData: input.audio }, { text: "Transkribiere und route die Sprachaufnahme." }]
+    : [{ text: input.text ?? "" }];
 
-  if (kind === "event" && !starts_at) kind = "todo";
-  if (starts_at && ends_at && ends_at < starts_at) ends_at = null;
-  if (kind === "event" && starts_at && !ends_at && !all_day) {
-    ends_at = new Date(new Date(starts_at).getTime() + 3_600_000).toISOString();
+  const out = await geminiJSON<{ transcript?: string | null; items?: Partial<RoutedItem>[] }>(system, parts, routedSchema);
+  const keys = new Set(ctx.workspaces.map((w) => w.key));
+  const fallbackWs = keys.has("privat") ? "privat" : ctx.workspaces[0]?.key ?? "privat";
+
+  const items: RoutedItem[] = [];
+  for (const raw of out.items ?? []) {
+    const title = String(raw.title ?? "").trim().slice(0, 200);
+    if (!title) continue;
+    let route: RouteTarget = ["event", "task", "shopping", "note"].includes(String(raw.route)) ? (raw.route as RouteTarget) : "task";
+    let starts_at = isoOrNull(raw.starts_at);
+    let ends_at = isoOrNull(raw.ends_at);
+    const all_day = Boolean(raw.all_day);
+    if (route === "event" && !starts_at) route = "task";
+    if (starts_at && ends_at && ends_at <= starts_at) ends_at = null;
+    if (route === "event" && starts_at && !ends_at && !all_day) ends_at = new Date(new Date(starts_at).getTime() + 3_600_000).toISOString();
+    if (route !== "event") {
+      starts_at = null;
+      ends_at = null;
+    }
+    items.push({
+      route,
+      title,
+      workspace: keys.has(String(raw.workspace)) ? String(raw.workspace) : fallbackWs,
+      task_type: (["task", "goal", "question", "idea", "exam"].includes(String(raw.task_type)) ? raw.task_type : "task") as RoutedItem["task_type"],
+      project: raw.project?.trim() || null,
+      starts_at,
+      ends_at,
+      all_day: route === "event" ? all_day : false,
+      due_at: route === "task" ? isoOrNull(raw.due_at) : null,
+      location: raw.location?.trim() || null,
+      quantity: raw.quantity?.trim() || null,
+      store: raw.store?.trim() || null,
+      content: raw.content?.trim() || null,
+    });
   }
-  if (kind === "todo") ends_at = null;
-  if (!starts_at) starts_at = null;
-
-  return {
-    kind,
-    title,
-    starts_at,
-    ends_at,
-    all_day,
-    location: p.location?.trim() || null,
-    description: p.description?.trim() || null,
-  };
+  return { transcript: out.transcript?.trim() || null, items: items.slice(0, 20) };
 }
 
-/* ─────────────────────────────────────────────
-   2) Auto-Scheduling: Future Log → Terminvorschläge
-   ───────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   2) Auto-Scheduling: Aufgaben ohne Datum → Kalender-Slots
+   ═══════════════════════════════════════════════════════════════════ */
 
 export interface ScanItem {
   id: string;
   title: string;
   notes: string | null;
-  category: string;
+  type: string;
+  workspace: string;
+  project: string | null;
   horizon: string | null;
   created_at: string;
 }
 
-export interface BusySlot {
-  title: string;
-  start: string;
-  end: string | null;
-}
-
 export interface ProposedSlot {
   item_id: string;
-  kind: EventKind;
   starts_at: string;
   ends_at: string | null;
   all_day: boolean;
   reason: string;
 }
 
-const suggestionSchema = {
+const slotSchema = {
   type: "OBJECT",
   properties: {
     suggestions: {
       type: "ARRAY",
       items: {
         type: "OBJECT",
-        properties: {
-          item_id: { type: "STRING" },
-          kind: { type: "STRING", enum: ["event", "todo"] },
-          starts_at: { type: "STRING" },
-          ends_at: { type: "STRING", nullable: true },
-          all_day: { type: "BOOLEAN" },
-          reason: { type: "STRING" },
-        },
-        required: ["item_id", "kind", "starts_at", "ends_at", "all_day", "reason"],
-        propertyOrdering: ["item_id", "kind", "starts_at", "ends_at", "all_day", "reason"],
+        properties: { item_id: S(), starts_at: S(), ends_at: S(true), all_day: B, reason: S() },
+        required: ["item_id", "starts_at", "ends_at", "all_day", "reason"],
+        propertyOrdering: ["item_id", "starts_at", "ends_at", "all_day", "reason"],
       },
     },
   },
@@ -169,59 +223,108 @@ const suggestionSchema = {
 
 export async function suggestSchedule(
   items: ScanItem[],
-  busy: BusySlot[],
+  busy: { title: string; start: string; end: string | null }[],
   now = new Date(),
 ): Promise<ProposedSlot[]> {
   if (items.length === 0) return [];
-
-  const system = `Du bist ein persönlicher Planungsassistent. Du bekommst eine Liste von Aufgaben, Ideen und Projekten OHNE festes Datum ("Future Log") und den bestehenden Kalender.
+  const system = `Du bist ein persönlicher Planungsassistent. Du bekommst Aufgaben OHNE Datum aus verschiedenen Lebensbereichen und den bestehenden Kalender.
 ${nowContext(now)}
+Schlage für jede Aufgabe, bei der ein konkreter Zeitpunkt sinnvoll ist, GENAU EINEN Slot vor.
+- Zeithorizont ("in 3 Monaten") gilt ab created_at des Items.
+- Ohne Horizont: sinnvollen Zeitpunkt aus dem Inhalt ableiten (Reifenwechsel → Okt/Apr, Steuer → vor Juli). Ideen ohne Zeitbezug WEGLASSEN.
+- Bereich "arbeit": werktags 9–17 Uhr. "schule": Lernen für Klausuren 2–5 Tage vor dem Termin, abends 17–20 Uhr. "privat": Wochenende oder abends.
+- Fragen an Kollegen (type "question"): nächster sinnvoller Werktag vormittags, 15–30 Minuten.
+- Keine Überschneidung mit belegten Slots, nie 22–7 Uhr, nicht in den nächsten 6 Stunden, max. 12 Monate voraus.
+- Dauer realistisch (15–180 min). all_day nur für reine Erinnerungen (dann starts_at 00:00, ends_at null).
+- ISO 8601 mit korrektem Berliner Offset des Zieldatums. reason: kurzer deutscher Satz (max. 90 Zeichen). item_id exakt übernehmen.`;
 
-Schlage für jedes Item, bei dem ein konkreter Zeitpunkt sinnvoll ist, GENAU EINEN Kalenderslot vor.
-
-Regeln:
-- Wenn ein Zeithorizont angegeben ist ("in 3 Monaten", "im Frühling", "vor dem Winter"), rechne ihn ab dem Erstellungsdatum des Items (created_at), nicht ab heute.
-- Ohne Horizont: leite einen sinnvollen Zeitpunkt aus dem Inhalt ab (z. B. Reifenwechsel → Oktober/April, Steuererklärung → vor Juli, Geschenk → vor dem Anlass). Gibt es keinen sinnvollen Anhaltspunkt (reine Idee ohne Zeitbezug), lass das Item WEG.
-- Wartung, Erledigungen, Behörden: werktags 9–17 Uhr oder Samstagvormittag. Hobby/DIY/Garten: Wochenende tagsüber. Nie zwischen 22 und 7 Uhr.
-- Keine Überschneidung mit den belegten Slots. Unter der Woche sind 7:30–16:30 meist durch Arbeit/Berufsschule belegt.
-- Nicht in den nächsten 24 Stunden und nicht weiter als 12 Monate in der Zukunft.
-- kind = "event" für Dinge mit Termincharakter (mit Dauer, realistisch 30–180 min); kind = "todo" für Erinnerungen/Fristen (dann all_day = true, ends_at = null, starts_at = 00:00 des Tages).
-- Zeiten als ISO 8601 MIT dem für das Zieldatum korrekten Berliner Offset (+01:00 Winter, +02:00 Sommer).
-- reason: ein kurzer deutscher Satz (max. 90 Zeichen), warum dieser Zeitpunkt passt.
-- item_id exakt aus der Eingabe übernehmen.`;
-
-  const user = JSON.stringify({ items, belegte_slots: busy });
-  const out = await geminiJSON<{ suggestions?: Partial<ProposedSlot>[] }>(system, user, suggestionSchema);
-
+  const out = await geminiJSON<{ suggestions?: Partial<ProposedSlot>[] }>(system, JSON.stringify({ items, belegte_slots: busy }), slotSchema);
   const ids = new Set(items.map((i) => i.id));
-  const minStart = now.getTime() + 6 * 3_600_000;
-  const maxStart = now.getTime() + 400 * 86_400_000;
+  const min = now.getTime() + 6 * 3_600_000;
+  const max = now.getTime() + 400 * 86_400_000;
   const seen = new Set<string>();
   const result: ProposedSlot[] = [];
-
   for (const s of out.suggestions ?? []) {
     const id = String(s.item_id ?? "");
-    if (!ids.has(id) || seen.has(id)) continue;
     const start = isoOrNull(s.starts_at);
-    if (!start) continue;
+    if (!ids.has(id) || seen.has(id) || !start) continue;
     const t = new Date(start).getTime();
-    if (t < minStart || t > maxStart) continue;
-
-    const kind: EventKind = s.kind === "todo" ? "todo" : "event";
-    const allDay = kind === "todo" ? true : Boolean(s.all_day);
-    let end = kind === "todo" ? null : isoOrNull(s.ends_at);
+    if (t < min || t > max) continue;
+    const allDay = Boolean(s.all_day);
+    let end = allDay ? null : isoOrNull(s.ends_at);
     if (end && new Date(end).getTime() <= t) end = null;
-    if (kind === "event" && !allDay && !end) end = new Date(t + 3_600_000).toISOString();
-
+    if (!allDay && !end) end = new Date(t + 3_600_000).toISOString();
     seen.add(id);
-    result.push({
-      item_id: id,
-      kind,
-      starts_at: start,
-      ends_at: end,
-      all_day: allDay,
-      reason: String(s.reason ?? "").trim().slice(0, 140),
-    });
+    result.push({ item_id: id, starts_at: start, ends_at: end, all_day: allDay, reason: String(s.reason ?? "").trim().slice(0, 140) });
   }
   return result;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   3) Daily Briefing: Fakten rein → kurzer, persönlicher Text raus
+   ═══════════════════════════════════════════════════════════════════ */
+
+export interface BriefingFacts {
+  name: string;
+  weekday: string;
+  schoolToday: string | null;
+  schedule: string[];
+  training: string;
+  workFocus: string;
+  openWork: string[];
+  dueToday: string[];
+}
+
+const briefingSchema = {
+  type: "OBJECT",
+  properties: { greeting: S(), summary: S(), training: S(), workFocus: S() },
+  required: ["greeting", "summary", "training", "workFocus"],
+  propertyOrdering: ["greeting", "summary", "training", "workFocus"],
+};
+
+export async function writeBriefing(facts: BriefingFacts, now = new Date()) {
+  const system = `Du schreibst ein kurzes, persönliches Morgen-Briefing auf Deutsch (du-Form), warm, klar, motivierend, ohne Floskeln und ohne Emojis.
+${nowContext(now)}
+Nutze NUR die gelieferten Fakten, erfinde keine Termine.
+- greeting: max. 8 Wörter, z. B. "Guten Morgen, Justus!"
+- summary: 1–2 Sätze, was heute ansteht (Schule/Arbeit/Termine in sinnvoller Reihenfolge, z. B. "Heute ist Berufsschule, danach Push-Training.").
+- training: 1 kurzer Satz zum Training (Einheit oder Rest Day).
+- workFocus: 1 kurzer Satz, konkret, basierend auf dem Arbeits-Fokus und offenen Arbeitspunkten.`;
+  return geminiJSON<{ greeting: string; summary: string; training: string; workFocus: string }>(system, JSON.stringify(facts), briefingSchema, {
+    temperature: 0.6,
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   4) News: Schlagzeilen kategorisieren + "Good News" erkennen
+   ═══════════════════════════════════════════════════════════════════ */
+
+const newsSchema = {
+  type: "OBJECT",
+  properties: {
+    items: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          i: { type: "INTEGER" },
+          category: { type: "STRING", enum: ["tech", "ki", "ecommerce", "wirtschaft", "allgemein"] },
+          positive: B,
+        },
+        required: ["i", "category", "positive"],
+        propertyOrdering: ["i", "category", "positive"],
+      },
+    },
+  },
+  required: ["items"],
+};
+
+export async function classifyHeadlines(headlines: { i: number; title: string; source: string }[]) {
+  const system = `Ordne deutsche Nachrichten-Schlagzeilen ein.
+category: "ki" (Künstliche Intelligenz, LLMs, KI-Firmen), "ecommerce" (Online-Handel, Retail, Shops, Marktplätze, Logistik, Payment), "tech" (sonstige IT, Gadgets, Software, Security), "wirtschaft" (Konjunktur, Unternehmen, Börse, Arbeitsmarkt), sonst "allgemein".
+positive: true NUR bei klar guten Nachrichten (Fortschritt, Erfolg, Wachstum, Lösung, Rettung, Rekord im positiven Sinn). Krieg, Krisen, Unglücke, Verluste, Streit = false. Im Zweifel false.
+Gib für JEDES i genau einen Eintrag zurück.`;
+  return geminiJSON<{ items: { i: number; category: string; positive: boolean }[] }>(system, JSON.stringify(headlines), newsSchema, {
+    timeoutMs: 25_000,
+  });
 }

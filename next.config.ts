@@ -13,6 +13,13 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    // alte Routen aus v1/v2
+    return [
+      { source: "/future", destination: "/bereiche", permanent: false },
+      { source: "/notizen", destination: "/bereiche", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;

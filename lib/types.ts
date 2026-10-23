@@ -1,51 +1,79 @@
-export type EventKind = "event" | "todo";
+/* ═══════════════════════════════════════════════════════════════════
+   Life OS – Domänen-Typen (spiegeln das Supabase-Schema)
+   ═══════════════════════════════════════════════════════════════════ */
 
-export interface LifeEvent {
-  id: string;
+export interface Profile {
   user_id: string;
-  kind: EventKind;
+  display_name: string | null;
+  school_class: string | null;
+  employer: string | null;
+  job_role: string | null;
+  work_focus: string | null;
+}
+
+export interface UserSettings {
+  user_id: string;
+  show_school: boolean;
+  last_future_scan: string | null;
+}
+
+export interface Workspace {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  icon: string;
+  color: string;
+  position: number;
+}
+
+/* ── Tasks ─────────────────────────────────────────────────────────── */
+
+export type TaskType = "task" | "goal" | "question" | "idea" | "exam";
+export type TaskStatus = "open" | "done" | "archived";
+
+export interface Task {
+  id: string;
+  workspace_id: string | null;
+  title: string;
+  notes: string | null;
+  type: TaskType;
+  status: TaskStatus;
+  priority: number;
+  project: string | null;
+  due_at: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  estimate_min: number | null;
+  horizon: string | null;
+  source: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/* ── Kalender ──────────────────────────────────────────────────────── */
+
+export interface CalEvent {
+  id: string;
+  workspace_id: string | null;
+  kind: "event" | "todo";
   title: string;
   description: string | null;
   location: string | null;
-  starts_at: string | null;
+  starts_at: string;
   ends_at: string | null;
   all_day: boolean;
-  done: boolean;
   remind_at: string | null;
-  source: "manual" | "ai";
+  source: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface NewsItem {
+export interface Suggestion {
   id: string;
-  title: string;
-  topline: string | null;
-  url: string;
-  date: string;
-}
-
-/* ── Future Log ─────────────────────────────── */
-
-export type FutureCategory = "aufgabe" | "idee" | "projekt";
-export type FutureStatus = "open" | "scheduled" | "done" | "archived";
-
-export interface FutureItem {
-  id: string;
-  title: string;
-  notes: string | null;
-  category: FutureCategory;
-  horizon: string | null;
-  status: FutureStatus;
-  scheduled_event_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ScheduleSuggestion {
-  id: string;
-  future_item_id: string;
-  kind: EventKind;
+  task_id: string | null;
+  kind: "event" | "todo";
   starts_at: string;
   ends_at: string | null;
   all_day: boolean;
@@ -54,58 +82,98 @@ export interface ScheduleSuggestion {
   created_at: string;
 }
 
-/** Vorschlag inkl. Titel des zugehörigen Items (für die Anzeige). */
-export interface SuggestionWithItem extends ScheduleSuggestion {
-  future_items: Pick<FutureItem, "id" | "title" | "category"> | null;
-}
+export type CalendarItemKind = "event" | "task" | "lesson" | "suggestion" | "exam";
 
-/* ── Einstellungen ──────────────────────────── */
-
-export interface UserSettings {
-  user_id: string;
-  show_school: boolean;
-  last_future_scan: string | null;
-}
-
-/* ── Widgets ────────────────────────────────── */
-
-export type WidgetType = "ppl" | "project" | "sport";
-
-export interface Widget {
-  id: string;
-  type: WidgetType;
+export interface CalendarItem {
+  key: string;
+  kind: CalendarItemKind;
+  refId: string;
   title: string;
-  config: Record<string, unknown>;
+  start: string; // ISO
+  end: string | null; // ISO
+  allDay: boolean;
+  subtitle?: string;
+  note?: string;
+  workspaceId?: string | null;
+  done?: boolean;
+  cancelled?: boolean;
+  changed?: boolean;
+}
+
+/* ── Notizen & Einkauf ─────────────────────────────────────────────── */
+
+export interface Note {
+  id: string;
+  workspace_id: string | null;
+  title: string | null;
+  content: string;
+  pinned: boolean;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteImage {
+  id: string;
+  note_id: string;
+  storage_path: string;
+  created_at: string;
+}
+
+export interface ShoppingItem {
+  id: string;
+  title: string;
+  quantity: string | null;
+  store: string | null;
+  project: string | null;
+  done: boolean;
+  done_at: string | null;
+  created_at: string;
+}
+
+/* ── Habits ────────────────────────────────────────────────────────── */
+
+export type HabitKind = "ppl" | "weekly" | "daily";
+
+export interface HabitConfig {
+  /** PPL: Reihenfolge der Einheiten, danach ist ein Rest Day vorgesehen */
+  split?: string[];
+  /** weekly/daily: Wochentage (0 = So … 6 = Sa), an denen die Routine fällig ist */
+  days?: number[];
+}
+
+export interface Habit {
+  id: string;
+  name: string;
+  kind: HabitKind;
+  config: HabitConfig;
+  color: string;
   pinned: boolean;
   position: number;
+  archived: boolean;
   created_at: string;
 }
 
-export interface WidgetEntry {
+export interface HabitLog {
   id: string;
-  widget_id: string;
-  data: Record<string, unknown>;
-  occurred_at: string;
-  done: boolean;
+  habit_id: string;
+  log_date: string; // YYYY-MM-DD (Berlin)
+  value: Record<string, unknown>;
   created_at: string;
 }
 
-export interface WidgetWithEntries extends Widget {
-  entries: WidgetEntry[];
-}
-
-/* ── School Hub / Timeline ──────────────────── */
+/* ── School Hub ────────────────────────────────────────────────────── */
 
 export interface SchoolLesson {
   id: string;
-  datum: string; // YYYY-MM-DD
-  start: string; // HH:MM
-  ende: string; // HH:MM
+  datum: string;
+  start: string;
+  ende: string;
   fach: string;
   fachName: string | null;
   raum: string;
   lehrer: string;
-  status: string; // "Regulär" | "Entfall" | "Änderung" | …
+  status: string;
   info: string;
   hausaufgaben: string;
   pruefung: string;
@@ -126,28 +194,51 @@ export interface SchoolSnapshot {
 
 export type SchoolState =
   | { state: "off" }
+  | { state: "loading" }
   | { state: "not_configured" }
   | { state: "ok"; snapshot: SchoolSnapshot; stale: boolean }
   | { state: "error"; message: string };
 
-export type TimelineItem =
-  | {
-      type: "event";
-      id: string;
-      start: string; // ISO
-      end: string | null;
-      title: string;
-      location: string | null;
-      allDay: boolean;
-    }
-  | {
-      type: "lesson";
-      id: string;
-      start: string; // ISO
-      end: string;
-      title: string;
-      subtitle: string;
-      cancelled: boolean;
-      changed: boolean;
-      note: string;
-    };
+/* ── News & Briefing ───────────────────────────────────────────────── */
+
+export type NewsCategory = "tech" | "ki" | "ecommerce" | "wirtschaft" | "allgemein";
+
+export interface NewsItem {
+  id: string;
+  title: string;
+  url: string;
+  source: string;
+  published: string;
+  category: NewsCategory;
+  positive: boolean;
+}
+
+export interface BriefingContent {
+  greeting: string;
+  summary: string;
+  schedule: string[];
+  training: string;
+  workFocus: string;
+  news: { title: string; url: string; source: string }[];
+  quote: { text: string; author: string };
+  generatedAt: string;
+  ai: boolean;
+}
+
+/* ── Snapshot für die Hydration des Stores ─────────────────────────── */
+
+export interface Snapshot {
+  userId: string;
+  loadedAt: string;
+  profile: Profile;
+  settings: UserSettings;
+  workspaces: Workspace[];
+  tasks: Task[];
+  events: CalEvent[];
+  notes: Note[];
+  noteImages: NoteImage[];
+  shopping: ShoppingItem[];
+  habits: Habit[];
+  habitLogs: HabitLog[];
+  suggestions: Suggestion[];
+}
