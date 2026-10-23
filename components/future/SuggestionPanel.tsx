@@ -77,7 +77,7 @@ export function SuggestionPanel({ suggestions, compact = false, openCount = 0 }:
       {shown.length === 0 ? (
         <p className="text-sm text-ink-muted">
           {openCount === 0
-            ? "Leg unten etwas ohne Datum an – Gemini schlägt dir dann passende Zeitpunkte vor."
+            ? "Leg oben etwas ohne Datum an – Gemini schlägt dir dann passende Zeitpunkte vor."
             : "Keine offenen Vorschläge. Gemini schaut automatisch einmal täglich nach."}
         </p>
       ) : (

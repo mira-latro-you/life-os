@@ -51,11 +51,11 @@ export function PplWidget({ widget }: { widget: WidgetWithEntries }) {
         </button>
       </div>
 
-      {/* Verlauf: letzte 9 Einheiten als Punkte */}
+      {/* Verlauf: letzte 7 Einheiten als Punkte */}
       <div className="mt-4 flex items-center gap-3">
-        <div className="flex gap-1.5" aria-label="Letzte Einheiten">
-          {Array.from({ length: 9 }).map((_, i) => {
-            const s = sessions[8 - i];
+        <div className="flex min-w-0 gap-1.5" aria-label="Letzte Einheiten">
+          {Array.from({ length: 7 }).map((_, i) => {
+            const s = sessions[6 - i];
             return (
               <span
                 key={i}
@@ -69,7 +69,7 @@ export function PplWidget({ widget }: { widget: WidgetWithEntries }) {
             );
           })}
         </div>
-        <span className="ml-auto text-right text-xs text-ink-muted">
+        <span className="ml-auto shrink-0 whitespace-nowrap text-right text-xs text-ink-muted">
           <span className="block text-sm font-medium text-ink">{thisWeek}×</span>
           letzte 7 Tage
         </span>
