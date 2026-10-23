@@ -187,7 +187,7 @@ export function createLifeStore(snapshot: Snapshot) {
 
       insert: async (table, row) => {
         get().upsertLocal(table, [row as unknown as Row]);
-        const { error } = await db().from(table).insert(row);
+        const { error } = await db().from(table).insert(row as never);
         if (error) {
           get().removeLocal(table, [row.id]);
           return fail("Speichern fehlgeschlagen", error);
@@ -199,7 +199,7 @@ export function createLifeStore(snapshot: Snapshot) {
         const before = read<Row>(table).find((r) => r.id === id);
         if (!before) return false;
         get().upsertLocal(table, [{ ...before, ...(patch as Record<string, unknown>), id } as Row]);
-        const { error } = await db().from(table).update(patch).eq("id", id);
+        const { error } = await db().from(table).update(patch as never).eq("id", id);
         if (error) {
           get().upsertLocal(table, [before]);
           return fail("Änderung fehlgeschlagen", error);
