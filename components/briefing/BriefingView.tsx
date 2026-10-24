@@ -1,26 +1,45 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Briefcase, Dumbbell, ExternalLink, Quote, RefreshCw, Sparkles, Sun } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { Briefcase, ChevronDown, Dumbbell, ExternalLink, Quote, RefreshCw, Sparkles, Sun } from "lucide-react";
 import { regenerateBriefing } from "@/app/actions/ai";
 import { formatTime } from "@/lib/dates";
 import type { BriefingContent } from "@/lib/types";
 
-/** Daily AI Briefing – Begrüßung, Tagesplan, Training, Arbeitsfokus, Good News, Zitat. */
+const OPEN_KEY = "lifeos.briefing.more";
+
+/**
+ * Daily AI Briefing – bewusst knapp: ein Satz zum Tag, zwei Chips (Training, Arbeitsfokus).
+ * Gute Nachrichten und Zitat liegen zugeklappt darunter.
+ */
 export function BriefingView({ initial }: { initial: BriefingContent }) {
   const [b, setB] = useState(initial);
   const [pending, startTransition] = useTransition();
-  const [open, setOpen] = useState(true);
+  const [more, setMore] = useState(false);
+
+  useEffect(() => {
+    try {
+      setMore(localStorage.getItem(OPEN_KEY) === "1");
+    } catch {}
+  }, []);
+  const toggleMore = () =>
+    setMore((m) => {
+      try {
+        localStorage.setItem(OPEN_KEY, m ? "0" : "1");
+      } catch {}
+      return !m;
+    });
+
+  const extras = [b.news.length ? `${b.news.length} gute ${b.news.length === 1 ? "Nachricht" : "Nachrichten"}` : null, "Zitat des Tages"].filter(Boolean).join(" · ");
 
   return (
     <section className="glass relative animate-rise overflow-hidden rounded-3xl p-5 [animation-delay:120ms]">
-      {/* sanfter Lichtschein */}
       <span aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-56 rounded-full bg-glow-400/15 blur-3xl" />
 
       <header className="relative flex items-center justify-between">
-        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 text-[13px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+        <p className="flex items-center gap-2 text-[13px] font-medium uppercase tracking-[0.14em] text-ink-muted">
           <Sparkles className="size-4 text-glow-300" /> Daily Briefing
-        </button>
+        </p>
         <button
           disabled={pending}
           onClick={() =>
@@ -36,45 +55,51 @@ export function BriefingView({ initial }: { initial: BriefingContent }) {
         </button>
       </header>
 
-      <p className="relative mt-3 text-xl font-semibold tracking-tight">{b.greeting}</p>
-      <p className="relative mt-1 leading-relaxed text-ink/90">{b.summary}</p>
+      <p className="relative mt-3 text-[17px] leading-snug text-ink">{b.summary}</p>
 
-      {open && (
-        <div className="relative mt-4 flex flex-col gap-3">
-          <Line icon={<Dumbbell className="size-4" />} tone="text-emerald-300">
+      <div className="relative mt-3 flex flex-wrap gap-2">
+        {b.training && (
+          <Chip icon={<Dumbbell className="size-3.5" />} className="bg-emerald-400/10 text-emerald-200">
             {b.training}
-          </Line>
-          {b.workFocus && (
-            <Line icon={<Briefcase className="size-4" />} tone="text-glow-300">
-              {b.workFocus}
-            </Line>
-          )}
+          </Chip>
+        )}
+        {b.workFocus && (
+          <Chip icon={<Briefcase className="size-3.5" />} className="bg-glow-400/10 text-glow-300">
+            {b.workFocus}
+          </Chip>
+        )}
+      </div>
 
+      <button
+        onClick={toggleMore}
+        aria-expanded={more}
+        className="relative mt-4 flex w-full items-center gap-1.5 border-t border-white/5 pt-3 text-xs text-ink-muted hover:text-ink"
+      >
+        <ChevronDown className={`size-3.5 transition-transform duration-200 ${more ? "rotate-180" : ""}`} /> {extras}
+      </button>
+
+      {more && (
+        <div className="relative mt-3 flex animate-[fade_200ms_ease-out] flex-col gap-3">
           {b.news.length > 0 && (
-            <div className="rounded-2xl bg-white/[0.035] p-3">
-              <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-amber-200/90">
-                <Sun className="size-3.5" /> Gute Nachrichten
-              </p>
-              <ul className="flex flex-col gap-1.5">
-                {b.news.map((n) => (
-                  <li key={n.url}>
-                    <a href={n.url} target="_blank" rel="noreferrer" className="group flex items-start gap-2 text-sm leading-snug hover:text-ink">
-                      <span className="flex-1 text-ink/85 group-hover:text-ink">{n.title}</span>
-                      <ExternalLink className="mt-0.5 size-3 shrink-0 text-ink-faint" />
-                    </a>
-                    <span className="text-[11px] text-ink-faint">{n.source}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <ul className="flex flex-col gap-2">
+              {b.news.map((n) => (
+                <li key={n.url}>
+                  <a href={n.url} target="_blank" rel="noreferrer" className="group flex items-start gap-2 text-sm leading-snug">
+                    <Sun className="mt-0.5 size-3.5 shrink-0 text-amber-200/80" />
+                    <span className="flex-1 text-ink/85 group-hover:text-ink">
+                      {n.title} <span className="text-[11px] text-ink-faint">· {n.source}</span>
+                    </span>
+                    <ExternalLink className="mt-0.5 size-3 shrink-0 text-ink-faint" />
+                  </a>
+                </li>
+              ))}
+            </ul>
           )}
-
-          <figure className="flex gap-2 border-t border-white/5 pt-3">
-            <Quote className="mt-0.5 size-4 shrink-0 text-violet-300/80" />
-            <div>
-              <blockquote className="text-sm italic leading-relaxed text-ink/85">{b.quote.text}</blockquote>
-              <figcaption className="mt-1 text-[11px] text-ink-faint">— {b.quote.author}</figcaption>
-            </div>
+          <figure className="flex gap-2">
+            <Quote className="mt-0.5 size-3.5 shrink-0 text-violet-300/80" />
+            <p className="text-sm italic leading-relaxed text-ink/80">
+              {b.quote.text} <span className="not-italic text-[11px] text-ink-faint">— {b.quote.author}</span>
+            </p>
           </figure>
         </div>
       )}
@@ -82,11 +107,11 @@ export function BriefingView({ initial }: { initial: BriefingContent }) {
   );
 }
 
-function Line({ icon, tone, children }: { icon: React.ReactNode; tone: string; children: React.ReactNode }) {
+function Chip({ icon, className, children }: { icon: React.ReactNode; className: string; children: React.ReactNode }) {
   return (
-    <p className="flex items-start gap-2.5 text-sm leading-relaxed text-ink/85">
-      <span className={`mt-0.5 shrink-0 ${tone}`}>{icon}</span>
-      <span>{children}</span>
-    </p>
+    <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] ${className}`}>
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{children}</span>
+    </span>
   );
 }

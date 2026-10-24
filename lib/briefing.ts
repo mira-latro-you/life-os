@@ -117,9 +117,9 @@ export async function getOrCreateBriefing(supabase: SupabaseClient, userId: stri
 
   let text = {
     greeting: `${hour < 11 ? "Guten Morgen" : hour < 18 ? "Hallo" : "Guten Abend"}, ${name}!`,
-    summary: schedule.length ? `Heute: ${schedule.slice(0, 3).join(", ")}.` : "Heute ist nichts Festes geplant – Raum für deine Projekte.",
-    training,
-    workFocus: profile.work_focus ? `Fokus bei der Arbeit: ${profile.work_focus}.` : openWork[0] ?? "",
+    summary: schedule.length ? `Heute: ${schedule.slice(0, 2).join(", ")}${schedule.length > 2 ? " und mehr" : ""}.` : "Heute ist nichts Festes geplant.",
+    training: !ppl ? "" : training.startsWith("Rest") ? "Rest Day" : training.startsWith("Training heute") ? "Training erledigt" : training.split(" (")[0],
+    workFocus: profile.work_focus || openWork[0]?.replace(/^(Frage|Ziel|Aufgabe): /, "") || "",
   };
   let ai = false;
   try {
@@ -127,9 +127,9 @@ export async function getOrCreateBriefing(supabase: SupabaseClient, userId: stri
     if (out.greeting && out.summary) {
       text = {
         greeting: out.greeting.slice(0, 80),
-        summary: out.summary.slice(0, 400),
-        training: (out.training || training).slice(0, 200),
-        workFocus: (out.workFocus || text.workFocus).slice(0, 240),
+        summary: out.summary.slice(0, 200),
+        training: ppl ? (out.training || text.training).slice(0, 40) : "",
+        workFocus: (out.workFocus || text.workFocus).slice(0, 60),
       };
       ai = true;
     }

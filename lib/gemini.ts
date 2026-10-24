@@ -283,13 +283,13 @@ const briefingSchema = {
 };
 
 export async function writeBriefing(facts: BriefingFacts, now = new Date()) {
-  const system = `Du schreibst ein kurzes, persönliches Morgen-Briefing auf Deutsch (du-Form), warm, klar, motivierend, ohne Floskeln und ohne Emojis.
+  const system = `Du schreibst ein sehr knappes Tages-Briefing auf Deutsch (du-Form), klar und ruhig, ohne Floskeln, ohne Emojis.
 ${nowContext(now)}
-Nutze NUR die gelieferten Fakten, erfinde keine Termine.
-- greeting: max. 8 Wörter, z. B. "Guten Morgen, Justus!"
-- summary: 1–2 Sätze, was heute ansteht (Schule/Arbeit/Termine in sinnvoller Reihenfolge, z. B. "Heute ist Berufsschule, danach Push-Training.").
-- training: 1 kurzer Satz zum Training (Einheit oder Rest Day).
-- workFocus: 1 kurzer Satz, konkret, basierend auf dem Arbeits-Fokus und offenen Arbeitspunkten.`;
+Nutze NUR die gelieferten Fakten, erfinde keine Termine. Weniger ist mehr.
+- greeting: kurze Begrüßung passend zur Tageszeit, z. B. "Guten Morgen, Justus!"
+- summary: GENAU 1 Satz, max. 18 Wörter: das Wichtigste des Tages in sinnvoller Reihenfolge (z. B. "Heute Berufsschule bis 15:30, danach Push-Training."). Keine Aufzählung aller Termine. Ist nichts geplant, sag das kurz.
+- training: max. 4 Wörter, z. B. "Push-Training" oder "Rest Day".
+- workFocus: max. 6 Wörter, konkret und als Stichpunkt, z. B. "Serhat nach Verantwortung fragen" oder "Mehr Fragen stellen".`;
   return geminiJSON<{ greeting: string; summary: string; training: string; workFocus: string }>(system, JSON.stringify(facts), briefingSchema, {
     temperature: 0.6,
   });
