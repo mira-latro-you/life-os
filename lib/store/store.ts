@@ -8,6 +8,7 @@ import type {
   NoteImage,
   Profile,
   SchoolState,
+  ExternalCalendarState,
   ShoppingItem,
   Snapshot,
   Suggestion,
@@ -64,6 +65,8 @@ export interface LifeState {
   habitLogs: HabitLog[];
   suggestions: Suggestion[];
   school: SchoolState;
+  /** Google Kalender & andere iCal-Abos (read-only) */
+  external: ExternalCalendarState;
   toasts: Toast[];
   brainOpen: boolean;
   editor: EditorState;
@@ -84,6 +87,7 @@ export interface LifeActions {
   dismissToast: (id: number) => void;
   setBrainOpen: (open: boolean) => void;
   setSchool: (s: SchoolState) => void;
+  setExternal: (s: ExternalCalendarState) => void;
   openEditor: (e: EditorState) => void;
 
   // Generische CRUD-Helfer mit Optimistik
@@ -114,7 +118,7 @@ const now = () => new Date().toISOString();
 const uuid = () => crypto.randomUUID();
 let toastSeq = 0;
 
-function snapshotToState(s: Snapshot): Omit<LifeState, "school" | "toasts" | "brainOpen" | "editor"> {
+function snapshotToState(s: Snapshot): Omit<LifeState, "school" | "external" | "toasts" | "brainOpen" | "editor"> {
   return {
     userId: s.userId,
     loadedAt: s.loadedAt,
@@ -156,6 +160,7 @@ export function createLifeStore(snapshot: Snapshot) {
     return {
       ...snapshotToState(snapshot),
       school: snapshot.settings.show_school ? { state: "loading" } : { state: "off" },
+      external: { state: "loading" },
       toasts: [],
       brainOpen: false,
       editor: null,
@@ -183,6 +188,7 @@ export function createLifeStore(snapshot: Snapshot) {
       dismissToast: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
       setBrainOpen: (open) => set({ brainOpen: open }),
       setSchool: (s) => set({ school: s }),
+      setExternal: (s) => set({ external: s }),
 
       /* ── generisches CRUD ───────────────────────────────────────── */
 

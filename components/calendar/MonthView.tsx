@@ -36,7 +36,8 @@ export function MonthView({
             const items = calendar.get(d) ?? [];
             const inMonth = d.slice(0, 7) === grid.month;
             const hasSchool = items.some((i) => i.kind === "lesson" && !i.cancelled);
-            const events = items.filter((i) => i.kind === "event").length;
+            const events = items.filter((i) => i.kind === "event" && !i.readOnly).length;
+            const google = items.some((i) => i.readOnly);
             const tasks = items.filter((i) => i.kind === "task" && !i.done).length;
             const exam = items.some((i) => i.kind === "exam");
             const suggestion = items.some((i) => i.kind === "suggestion");
@@ -57,6 +58,7 @@ export function MonthView({
                   <span className="flex h-1.5 items-center gap-0.5">
                     {hasSchool && <span className="size-1.5 rounded-full bg-violet-300" />}
                     {events > 0 && <span className="size-1.5 rounded-full bg-glow-400" />}
+                    {google && <span className="size-1.5 rounded-full bg-amber-300" />}
                     {tasks > 0 && <span className="size-1.5 rounded-[2px] bg-emerald-300" />}
                     {exam && <span className="size-1.5 rounded-full bg-rose-300" />}
                     {suggestion && <span className="size-1.5 rounded-full border border-dashed border-glow-300" />}
@@ -68,6 +70,7 @@ export function MonthView({
         </div>
         <div className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 border-t border-white/5 pt-2 text-[10px] text-ink-faint">
           <Legend c="bg-glow-400" l="Termin" />
+          <Legend c="bg-amber-300" l="Google" />
           <Legend c="bg-violet-300" l="Schule" />
           <Legend c="bg-emerald-300 rounded-[2px]" l="Aufgabe" />
           <Legend c="bg-rose-300" l="Prüfung" />

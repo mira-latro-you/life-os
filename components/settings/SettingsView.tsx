@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Switch } from "@/components/ui/Switch";
 import { field } from "@/components/ui/tokens";
 import { MODULES } from "@/lib/modules";
+import { CalendarFeeds } from "./CalendarFeeds";
 import type { Profile } from "@/lib/types";
 
 const FIELDS: { key: keyof Profile; label: string; placeholder: string }[] = [
@@ -99,6 +100,8 @@ export function SettingsView() {
           )}
           <Switch checked={settings.show_school} onChange={(v) => actions.setSettings({ show_school: v })} label="Berufsschultage einblenden" />
         </div>
+        <div className="my-4 h-px bg-white/[0.06]" />
+        <CalendarFeeds />
       </section>
 
       <section className="glass rounded-3xl p-5">

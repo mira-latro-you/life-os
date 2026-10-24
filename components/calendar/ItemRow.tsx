@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, GraduationCap, MapPin, Sparkles, X } from "lucide-react";
+import { CalendarDays, Check, GraduationCap, MapPin, Sparkles, X } from "lucide-react";
 import { useActions, useLife } from "@/lib/store/provider";
 import { formatTime } from "@/lib/dates";
 import { tone } from "@/components/ui/tokens";
@@ -11,7 +11,7 @@ export function ItemRow({ item, now, compact = false }: { item: CalendarItem; no
   const actions = useActions();
   const workspaces = useLife((s) => s.workspaces);
   const ws = workspaces.find((w) => w.id === item.workspaceId);
-  const t = tone(ws?.color);
+  const t = tone(item.color ?? ws?.color);
 
   const start = new Date(item.start).getTime();
   const end = item.end ? new Date(item.end).getTime() : start + 30 * 60_000;
@@ -20,9 +20,11 @@ export function ItemRow({ item, now, compact = false }: { item: CalendarItem; no
   const isLesson = item.kind === "lesson";
   const isSuggestion = item.kind === "suggestion";
   const isTask = item.kind === "task";
+  const isExternal = Boolean(item.readOnly);
+  const clickable = (item.kind === "event" && !isExternal) || isTask;
 
   const open = () => {
-    if (item.kind === "event") actions.openEditor({ type: "event", id: item.refId });
+    if (item.kind === "event" && !isExternal) actions.openEditor({ type: "event", id: item.refId });
     if (isTask) actions.openEditor({ type: "task", id: item.refId });
   };
 
@@ -45,13 +47,13 @@ export function ItemRow({ item, now, compact = false }: { item: CalendarItem; no
         <span className={`size-[9px] rounded-full ring-[3px] ring-abyss-900 ${dot}`} />
       </span>
       <div
-        role={item.kind === "event" || isTask ? "button" : undefined}
-        tabIndex={item.kind === "event" || isTask ? 0 : undefined}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
         onClick={open}
         onKeyDown={(e) => e.key === "Enter" && open()}
         className={`min-w-0 flex-1 rounded-2xl px-3 py-2 transition-colors ${
           running ? (isLesson ? "bg-violet-400/10 ring-1 ring-violet-300/25" : "bg-glow-400/10 ring-1 ring-glow-400/25") : isSuggestion ? "border border-dashed border-glow-400/30 bg-glow-400/[0.04]" : isLesson ? "bg-white/[0.025]" : "hover:bg-white/[0.03]"
-        } ${item.kind === "event" || isTask ? "cursor-pointer" : ""}`}
+        } ${clickable ? "cursor-pointer" : ""}`}
       >
         <div className="flex items-center gap-2">
           {isLesson && <GraduationCap className="size-3.5 shrink-0 text-violet-300/80" />}
@@ -77,7 +79,7 @@ export function ItemRow({ item, now, compact = false }: { item: CalendarItem; no
             {item.end && !item.allDay && <span className="tabular-nums">bis {formatTime(item.end)}</span>}
             {item.subtitle && item.subtitle !== "fällig" && (
               <span className="flex items-center gap-1 truncate">
-                {item.kind === "event" && <MapPin className="size-3" />}
+                {isExternal ? <CalendarDays className={`size-3 ${t.text}`} /> : item.kind === "event" && <MapPin className="size-3" />}
                 {item.subtitle}
               </span>
             )}

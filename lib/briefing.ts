@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { berlinHour, dayRange, formatTime, todayKey, formatLongDate } from "./dates";
 import { mergeLessons } from "./calendar";
 import { getSchoolState } from "./school-hub";
+import { getExternalCalendar } from "./calendar-feeds";
 import { getNews } from "./news";
 import { habitStatus, SPLIT_LABEL } from "./habits";
 import { writeBriefing } from "./gemini";
@@ -54,6 +55,19 @@ export async function getOrCreateBriefing(supabase: SupabaseClient, userId: stri
   for (const e of eventsRes.data ?? []) {
     schedule.push(e.all_day ? `${e.title} (ganztägig)` : `${formatTime(e.starts_at)} ${e.title}`);
   }
+  // Google Kalender
+  try {
+    const ext = await getExternalCalendar(supabase, userId);
+    if (ext.state === "ok") {
+      for (const e of ext.events) {
+        const overlaps = e.allDay ? e.start <= end && (e.end ?? e.start) > start : e.start >= start && e.start <= end;
+        if (overlaps) schedule.push(e.allDay ? `${e.title} (ganztägig)` : `${formatTime(e.start)} ${e.title}`);
+      }
+    }
+  } catch (err) {
+    console.error("[briefing] google", err);
+  }
+  schedule.sort((a, b) => (/^\d{2}:\d{2}/.test(a) ? a : "00:00" + a).localeCompare(/^\d{2}:\d{2}/.test(b) ? b : "00:00" + b));
   for (const t of tasks) {
     if (t.scheduled_start && t.scheduled_start >= start && t.scheduled_start <= end) schedule.push(`${formatTime(t.scheduled_start)} ${t.title}`);
   }

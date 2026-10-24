@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { getOrCreateBriefing } from "@/lib/briefing";
+import { getExternalCalendar } from "@/lib/calendar-feeds";
 import { suggestSchedule, type ScanItem } from "@/lib/gemini";
 import type { BriefingContent } from "@/lib/types";
 
@@ -69,7 +70,14 @@ export async function scanBacklog(force = false): Promise<{ ok: true; created: n
     .limit(150);
 
   try {
-    const proposals = await suggestSchedule(items, (busy ?? []).map((b) => ({ title: b.title, start: b.starts_at, end: b.ends_at })));
+    // auch Google-Kalender-Termine sind belegt
+    const ext = await getExternalCalendar(supabase, user.id).catch(() => null);
+    const nowIso = new Date().toISOString();
+    const googleBusy =
+      ext?.state === "ok"
+        ? ext.events.filter((e) => !e.allDay && e.start >= nowIso && e.start <= until).map((e) => ({ title: e.title, start: e.start, end: e.end }))
+        : [];
+    const proposals = await suggestSchedule(items, [...(busy ?? []).map((b) => ({ title: b.title, start: b.starts_at, end: b.ends_at })), ...googleBusy].slice(0, 200));
     if (proposals.length === 0) return { ok: true, created: 0 };
     const { error } = await supabase.from("schedule_suggestions").insert(
       proposals.map((p) => ({ task_id: p.item_id, kind: p.all_day ? "todo" : "event", starts_at: p.starts_at, ends_at: p.ends_at, all_day: p.all_day, reason: p.reason })),

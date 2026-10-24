@@ -1,9 +1,9 @@
 import { addDays, berlinToISO, dayKeyOf, dayRange } from "./dates";
-import type { CalEvent, CalendarItem, SchoolExam, SchoolLesson, Suggestion, Task } from "./types";
+import type { CalEvent, CalendarFeedStatus, CalendarItem, ExternalEvent, SchoolExam, SchoolLesson, Suggestion, Task } from "./types";
 
 /**
- * Kalender-Aggregation: führt Termine, geplante/fällige Aufgaben, Berufsschulstunden,
- * Prüfungen und offene KI-Vorschläge zu einer Liste pro Tag zusammen.
+ * Kalender-Aggregation: führt Termine, Google-Kalender-Termine, geplante/fällige Aufgaben,
+ * Berufsschulstunden, Prüfungen und offene KI-Vorschläge zu einer Liste pro Tag zusammen.
  * Reine Funktion – läuft identisch auf Server und Client.
  */
 
@@ -13,6 +13,16 @@ export interface CalendarSources {
   lessons: SchoolLesson[];
   exams: SchoolExam[];
   suggestions: Suggestion[];
+  /** Termine aus abonnierten Kalendern (Google Kalender) – nur lesen */
+  external?: ExternalEvent[];
+  feeds?: CalendarFeedStatus[];
+}
+
+/** Erster und letzter Tag eines Termins; Endzeit ist exklusiv (Mitternacht zählt nicht mehr). */
+function daySpan(start: string, end: string | null) {
+  const startDay = dayKeyOf(start);
+  const endDay = end && end > start ? dayKeyOf(new Date(new Date(end).getTime() - 1).toISOString()) : startDay;
+  return { startDay, endDay: endDay < startDay ? startDay : endDay };
 }
 
 export function buildCalendar(src: CalendarSources, from: string, to: string): Map<string, CalendarItem[]> {
@@ -26,9 +36,7 @@ export function buildCalendar(src: CalendarSources, from: string, to: string): M
 
   for (const e of src.events) {
     if (e.kind !== "event" || !e.starts_at) continue;
-    const startDay = dayKeyOf(e.starts_at);
-    // bei ganztägig/mehrtägig: Endtag ist exklusiv, wenn ends_at genau Mitternacht ist
-    const endDay = e.ends_at ? dayKeyOf(new Date(new Date(e.ends_at).getTime() - 1).toISOString()) : startDay;
+    const { startDay, endDay } = daySpan(e.starts_at, e.ends_at);
     for (let d = startDay; d <= endDay && d <= to; d = addDays(d, 1)) {
       push(d, {
         key: `e-${e.id}-${d}`,
@@ -40,6 +48,26 @@ export function buildCalendar(src: CalendarSources, from: string, to: string): M
         allDay: e.all_day || d !== startDay,
         subtitle: e.location ?? undefined,
         workspaceId: e.workspace_id,
+      });
+    }
+  }
+
+  for (const x of src.external ?? []) {
+    const feed = src.feeds?.find((f) => f.id === x.feedId);
+    const { startDay, endDay } = daySpan(x.start, x.end);
+    for (let d = startDay < from ? from : startDay; d <= endDay && d <= to; d = addDays(d, 1)) {
+      push(d, {
+        key: `g-${x.id}-${d}`,
+        kind: "event",
+        refId: x.id,
+        title: x.title,
+        start: x.start,
+        end: x.end,
+        allDay: x.allDay || d !== startDay,
+        subtitle: [feed?.name ?? "Kalender", x.location].filter(Boolean).join(" · "),
+        readOnly: true,
+        source: feed?.name,
+        color: feed?.color ?? "amber",
       });
     }
   }

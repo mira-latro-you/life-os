@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef } from "react";
 import { useStore } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 import { COLLECTIONS, createLifeStore, type LifeStore, type LifeStoreApi, type TableName } from "./store";
-import type { SchoolState, Snapshot } from "@/lib/types";
+import type { ExternalCalendarState, SchoolState, Snapshot } from "@/lib/types";
 
 const StoreContext = createContext<LifeStoreApi | null>(null);
 
@@ -66,6 +66,29 @@ export function StoreProvider({ snapshot, children }: { snapshot: Snapshot; chil
       cancelled = true;
     };
   }, [showSchool, store]);
+
+  // Google Kalender & Co.: beim Start laden, beim Zurückkehren in die App auffrischen
+  useEffect(() => {
+    let last = 0;
+    let running = false;
+    const load = async () => {
+      if (running) return;
+      running = true;
+      try {
+        const r = await fetch("/api/calendar", { cache: "no-store" });
+        if (r.ok) store.getState().setExternal((await r.json()) as ExternalCalendarState);
+        last = Date.now();
+      } catch {
+        // offline: letzter Stand bleibt stehen
+      } finally {
+        running = false;
+      }
+    };
+    load();
+    const onVisible = () => document.visibilityState === "visible" && Date.now() - last > 5 * 60_000 && load();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [store]);
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
 }

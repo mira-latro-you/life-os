@@ -50,11 +50,11 @@ export function WeekView({ from, calendar, onSelectDay }: { from: string; calend
 function WeekItem({ item }: { item: CalendarItem }) {
   const actions = useActions();
   const open = () => {
-    if (item.kind === "event") actions.openEditor({ type: "event", id: item.refId });
+    if (item.kind === "event" && !item.readOnly) actions.openEditor({ type: "event", id: item.refId });
     if (item.kind === "task") actions.openEditor({ type: "task", id: item.refId });
   };
   const marker =
-    item.kind === "task" ? "rounded-[3px] bg-emerald-300/80" : item.kind === "suggestion" ? "border border-dashed border-glow-300" : item.kind === "exam" ? "bg-rose-300" : "bg-glow-400";
+    item.readOnly ? "bg-amber-300" : item.kind === "task" ? "rounded-[3px] bg-emerald-300/80" : item.kind === "suggestion" ? "border border-dashed border-glow-300" : item.kind === "exam" ? "bg-rose-300" : "bg-glow-400";
   return (
     <li>
       <button onClick={open} className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-sm hover:bg-white/[0.03]">

@@ -98,6 +98,10 @@ export interface CalendarItem {
   done?: boolean;
   cancelled?: boolean;
   changed?: boolean;
+  /** externe Quelle (z. B. Google Kalender) – nur lesen, kein Editor */
+  readOnly?: boolean;
+  source?: string;
+  color?: string;
 }
 
 /* ── Notizen & Einkauf ─────────────────────────────────────────────── */
@@ -242,3 +246,31 @@ export interface Snapshot {
   habitLogs: HabitLog[];
   suggestions: Suggestion[];
 }
+
+/* ── Externe Kalender (Google Kalender per iCal-Abo) ─────────────── */
+
+export interface ExternalEvent {
+  id: string;
+  feedId: string;
+  title: string;
+  start: string; // ISO
+  end: string | null; // ISO, bei ganztägig exklusiv
+  allDay: boolean;
+  location: string | null;
+}
+
+export interface CalendarFeedStatus {
+  id: string;
+  name: string;
+  color: string;
+  /** maskierte Adresse, die geheime URL verlässt den Server nie */
+  hint: string;
+  ok: boolean;
+  error?: string;
+  count: number;
+}
+
+export type ExternalCalendarState =
+  | { state: "loading" }
+  | { state: "empty" }
+  | { state: "ok"; events: ExternalEvent[]; feeds: CalendarFeedStatus[]; fetchedAt: string; stale: boolean };
