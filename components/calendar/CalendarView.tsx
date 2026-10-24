@@ -44,7 +44,12 @@ export function CalendarView() {
   const step = (dir: 1 | -1) => {
     if (view === "day") setAnchor((a) => addDays(a, dir));
     else if (view === "week") setAnchor((a) => addDays(a, dir * 7));
-    else setAnchor((a) => `${addDays(`${a.slice(0, 7)}-15`, dir * 30).slice(0, 7)}-01`);
+    else {
+      // Auswahl wandert mit: im aktuellen Monat "heute", sonst der 1. des Monats
+      const next = `${addDays(`${anchor.slice(0, 7)}-15`, dir * 30).slice(0, 7)}-01`;
+      setAnchor(next);
+      setSelected(next.slice(0, 7) === todayKey().slice(0, 7) ? todayKey() : next);
+    }
   };
 
   const title = view === "day" ? formatDayKey(anchor, { long: true }) : view === "week" ? `${formatDayKey(from)} – ${formatDayKey(to)}` : formatMonth(anchor.slice(0, 7));

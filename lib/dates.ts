@@ -88,7 +88,11 @@ export function monthGrid(day: string) {
 }
 
 export function berlinHour(date = new Date()): number {
-  return Number(new Intl.DateTimeFormat("de-DE", { timeZone: TZ, hour: "numeric", hourCycle: "h23" }).format(date));
+  // formatToParts statt format: manche Browser liefern "10 Uhr" statt "10"
+  const hour = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" })
+    .formatToParts(date)
+    .find((p) => p.type === "hour")?.value;
+  return Number(hour ?? 0) % 24;
 }
 
 /* ── Formatierung ─────────────────────────────────────────────────── */

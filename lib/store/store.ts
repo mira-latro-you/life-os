@@ -164,7 +164,8 @@ export function createLifeStore(snapshot: Snapshot) {
       openEditor: (e) => set({ editor: e }),
 
       applyChange: (table, type, row) => {
-        if (type === "DELETE") get().removeLocal(table, [row.id]);
+        // archivierte Habits verschwinden aus dem Store (wie beim Laden des Snapshots)
+        if (type === "DELETE" || (table === "habits" && row.archived === true)) get().removeLocal(table, [row.id]);
         else get().upsertLocal(table, [row]);
       },
 

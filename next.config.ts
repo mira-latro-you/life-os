@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Seiten rendern nur Client-Komponenten aus dem Store → besuchte Seiten
+    // dürfen im Router-Cache bleiben, Tab-Wechsel sind dann sofort da.
+    staleTimes: { dynamic: 300, static: 600 },
+  },
   async headers() {
     return [
       {
