@@ -8,7 +8,7 @@ import { Blocks, CalendarDays, Home, Layers3, Settings2, ShoppingBasket, type Lu
  *   2. Collection in lib/store/store.ts → COLLECTIONS ergänzen, Snapshot in lib/data/snapshot.ts laden
  *   3. Seite unter app/(app)/<route>/page.tsx anlegen
  *   4. Eintrag hier hinzufügen – Navigation und Einstellungen übernehmen ihn automatisch
- *   5. optional: Karte im Dashboard (components/dashboard/DashboardModules.tsx)
+ *   5. optional: Karte im Dashboard (components/dashboard/Dashboard.tsx)
  */
 export interface ModuleDef {
   id: string;
