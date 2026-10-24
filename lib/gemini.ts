@@ -19,17 +19,38 @@ export async function geminiJSON<T>(
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
   const parts: Part[] = typeof user === "string" ? [{ text: user }] : user;
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts }],
-      generationConfig: { temperature: opts.temperature ?? 0.1, responseMimeType: "application/json", responseSchema },
-    }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: "user", parts }],
+    generationConfig: { temperature: opts.temperature ?? 0.1, responseMimeType: "application/json", responseSchema },
   });
+
+  // Überlastung (429/500/503/504) ist bei Gemini meist nach Sekunden vorbei → bis zu 3 Versuche
+  const deadline = Date.now() + (opts.timeoutMs ?? 30_000);
+  let res: Response | null = null;
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining < 1_500) break;
+    try {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body,
+        cache: "no-store",
+        signal: AbortSignal.timeout(remaining),
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      res = null;
+      break; // Timeout/Netzwerk: nicht weiter warten
+    }
+    if (res.ok || ![429, 500, 503, 504].includes(res.status)) break;
+    lastError = `Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`;
+    res = null;
+    await new Promise((r) => setTimeout(r, 700 * 2 ** attempt + Math.random() * 300));
+  }
+  if (!res) throw new Error(lastError || "Gemini nicht erreichbar");
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
   const raw: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
