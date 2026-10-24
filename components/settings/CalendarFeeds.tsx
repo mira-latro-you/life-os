@@ -128,7 +128,7 @@ export function CalendarFeeds() {
           </ol>
         )}
         <p className="text-[11px] leading-relaxed text-ink-faint">
-          Nur lesen: Termine erscheinen im Kalender, im Briefing und blockieren Slots beim Einplanen. Die Adresse bleibt auf dem Server; Berufsschul-Termine des School Hub werden automatisch ausgelassen.
+          Google → App: Termine erscheinen im Kalender, im Briefing und blockieren Slots beim Einplanen. App → Google: neue und geänderte App-Termine landen automatisch in deinem Hauptkalender (über den School Hub). Die Adresse bleibt auf dem Server; Berufsschul-Termine werden nicht doppelt angezeigt.
         </p>
       </div>
     </div>

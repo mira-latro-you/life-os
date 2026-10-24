@@ -90,6 +90,61 @@ export function StoreProvider({ snapshot, children }: { snapshot: Snapshot; chil
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [store]);
 
+  // Life OS → Google Kalender: nach Änderungen an Terminen (gebündelt) und einmal beim Start abgleichen
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastSig = "";
+    let syncing = false;
+    let again = false;
+    const signature = (events: LifeStore["events"]) =>
+      events
+        .filter((e) => e.kind === "event")
+        .map((e) => [e.id, e.title, e.starts_at, e.ends_at, e.all_day, e.location, e.description, e.google_uid ? 1 : 0].join("|"))
+        .sort()
+        .join("~");
+    const run = async () => {
+      if (syncing) {
+        again = true;
+        return;
+      }
+      syncing = true;
+      try {
+        const r = await fetch("/api/google/sync", { method: "POST", cache: "no-store" });
+        const res = (await r.json()) as { pushed?: number; removed?: number };
+        // neue Google-Termine gleich im Abo sichtbar machen (Dopplungen filtert der Server)
+        if ((res.pushed ?? 0) + (res.removed ?? 0) > 0) {
+          const ext = await fetch("/api/calendar?refresh=1", { cache: "no-store" });
+          if (ext.ok) store.getState().setExternal((await ext.json()) as ExternalCalendarState);
+        }
+      } catch {
+        // offline: beim nächsten Mal
+      } finally {
+        syncing = false;
+        if (again) {
+          again = false;
+          schedule(1500);
+        }
+      }
+    };
+    const schedule = (ms: number) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(run, ms);
+    };
+    lastSig = signature(store.getState().events);
+    schedule(4000);
+    const unsub = store.subscribe((state) => {
+      const sig = signature(state.events);
+      if (sig !== lastSig) {
+        lastSig = sig;
+        schedule(2500);
+      }
+    });
+    return () => {
+      unsub();
+      if (timer) clearTimeout(timer);
+    };
+  }, [store]);
+
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
 }
 

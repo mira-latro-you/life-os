@@ -49,7 +49,8 @@ export function EventEditor({ id, draft, onClose }: { id?: string; draft?: Parti
   async function remove() {
     if (!existing) return;
     onClose();
-    const copy = { ...existing };
+    // Kopie ohne Google-Verknüpfung: beim Rückgängigmachen wird der Termin in Google neu angelegt
+    const copy = { ...existing, google_uid: null, google_hash: null, google_sync_error: null };
     if (await actions.remove("events", existing.id)) {
       actions.toast("Termin gelöscht", "info", { label: "Rückgängig", run: () => actions.insert("events", copy) });
     }

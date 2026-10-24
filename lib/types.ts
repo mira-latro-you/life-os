@@ -68,6 +68,10 @@ export interface CalEvent {
   source: string;
   created_at: string;
   updated_at: string;
+  /** Verknüpfung mit dem Google Kalender (Life OS → Google) */
+  google_uid?: string | null;
+  google_hash?: string | null;
+  google_sync_error?: string | null;
 }
 
 export interface Suggestion {

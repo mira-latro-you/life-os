@@ -9,12 +9,14 @@ import type { CalendarFeedStatus, ExternalCalendarState, ExternalEvent } from ".
  * external_cache gehalten. Die geheime URL bleibt auf dem Server.
  */
 
-const CACHE_KEY = "calendar_feeds_v1";
+const CACHE_KEY = "calendar_feeds_v2";
 const TTL_MS = 10 * 60_000;
 const PAST_DAYS = 14;
 const FUTURE_DAYS = 180;
 /** Diese Termine schreibt der School Hub selbst in Google – kommen schon direkt aus Untis. */
 const SCHOOL_HUB_MARKER = /Automatisch aus Untis \(School Hub\)/i;
+/** Termine, die Life OS selbst nach Google geschrieben hat – existieren schon in der App. */
+const LIFEOS_MARKER = /Eingetragen über Life OS/i;
 
 interface FeedRow {
   id: string;
@@ -79,7 +81,7 @@ function fetchRange() {
 export function eventsFromIcs(text: string, feedId: string): ExternalEvent[] {
   const { from, to } = fetchRange();
   return parseIcs(text, from, to)
-    .filter((e) => !(e.description && SCHOOL_HUB_MARKER.test(e.description)))
+    .filter((e) => !(e.description && (SCHOOL_HUB_MARKER.test(e.description) || LIFEOS_MARKER.test(e.description))))
     .map((e) => ({
       id: `${feedId}:${e.uid}:${e.start}`,
       feedId,

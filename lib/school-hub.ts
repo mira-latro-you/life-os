@@ -31,26 +31,35 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{1,2}:\d{2}$/;
 const padTime = (t: string) => (t.length === 4 ? "0" + t : t);
 
-async function fetchFromHub(): Promise<SchoolSnapshot> {
+/**
+ * Allgemeiner Aufruf einer freigegebenen School-Hub-Funktion (siehe API_FUNCS im Apps Script).
+ * Wirft bei Fehlern mit der Meldung des School Hub.
+ */
+export async function callHub<T = unknown>(fn: string, args: unknown[] = [], timeoutMs = 25_000): Promise<T> {
+  if (!schoolHubConfigured()) throw new Error("School Hub ist nicht eingerichtet");
   const res = await fetch(process.env.SCHOOL_HUB_API_URL!, {
     method: "POST",
     // text/plain wie im School-Hub-Frontend (Apps Script beantwortet keine CORS-Vorabfrage)
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ k: process.env.SCHOOL_HUB_KEY, fn: "getDashboard", args: [] }),
+    body: JSON.stringify({ k: process.env.SCHOOL_HUB_KEY, fn, args }),
     redirect: "follow",
     cache: "no-store",
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`School Hub antwortet mit ${res.status}`);
-
   const text = await res.text();
-  let json: { ok?: boolean; error?: string; data?: { lessons?: RawLesson[]; exams?: RawExam[]; subjects?: Record<string, string> } };
+  let json: { ok?: boolean; error?: string; data?: T };
   try {
     json = JSON.parse(text);
   } catch {
     throw new Error("School Hub hat kein JSON geliefert – stimmt die /exec-URL?");
   }
   if (!json.ok) throw new Error(json.error || "School Hub meldet einen Fehler");
+  return json.data as T;
+}
+
+async function fetchFromHub(): Promise<SchoolSnapshot> {
+  const json = { data: await callHub<{ lessons?: RawLesson[]; exams?: RawExam[]; subjects?: Record<string, string> }>("getDashboard", [], 15_000) };
 
   const subjects = json.data?.subjects ?? {};
   const lessons: SchoolLesson[] = (json.data?.lessons ?? [])
